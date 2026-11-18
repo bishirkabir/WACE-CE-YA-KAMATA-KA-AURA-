@@ -1,0 +1,66 @@
+
+name: Build Wace Ce Ya Kamata Ka Aura APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Extract Android project
+        run: |
+          mkdir -p project
+          unzip -q ./*.zip -d project
+          APP_GRADLE=$(find project -type f -path '*/app/build.gradle' -print -quit)
+          if [ -z "$APP_GRADLE" ]; then
+            echo "app/build.gradle not found"
+            exit 1
+          fi
+          PROJECT_DIR="${APP_GRADLE%/app/build.gradle}"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+
+      - name: Set Java and Kotlin targets to 17
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          p = Path(os.environ["PROJECT_DIR"]) / "app/build.gradle"
+          s = p.read_text()
+          s = s.replace('android {', '''android {
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = '17'
+              }''', 1)
+          p.write_text(s)
+          PY
+
+      - name: Build APK
+        run: gradle -p "$PROJECT_DIR" assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WACE-CE-YA-KAMATA-KA-AURA-APK
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
